@@ -370,6 +370,115 @@ for epoch in range(3):
   </table>
 </div>
 
+winkle-GW 分层架构图（Mermaid）
+flowchart TB
+
+  %% ========== L1 入口层 ==========
+  subgraph L1["L1 入口层（用户/调用方式）"]
+    L1_native["Python API（Twinkle Native）\npath: src/twinkle/"]
+    L1_client["Python Client SDK（远程训练/HTTP）\npath: src/twinkle_client/"]
+    L1_http["HTTP / Gateway API（对外服务入口）\npath: src/twinkle/server/gateway/"]
+  end
+
+  %% ========== L2 服务层 ==========
+  subgraph L2["L2 服务层（Server / Router / 多租户状态）"]
+    S_entry["Server 入口\npath: src/twinkle/server/__main__.py"]
+    S_launcher["Server Launcher\npath: src/twinkle/server/launcher.py"]
+    S_common["Router/Datum/Checkpoint factory\npath: src/twinkle/server/common/"]
+    S_gateway["Gateway (Tinker/Twinkle handlers)\npath: src/twinkle/server/gateway/"]
+    S_model_svc["Model Service App + Handlers\npath: src/twinkle/server/model/"]
+    S_processor_svc["Processor Service App + Handlers\npath: src/twinkle/server/processor/"]
+    S_sampler_svc["Sampler Service App + Handlers\npath: src/twinkle/server/sampler/"]
+    S_state["Multi-tenant State Mgmt\npath: src/twinkle/server/utils/state/"]
+    S_queue["Task Queue / Rate limiter\npath: src/twinkle/server/utils/task_queue/"]
+    S_lifecycle["Lifecycle adapters\npath: src/twinkle/server/utils/lifecycle/"]
+  end
+
+  %% ========== L3 运行时/基础设施抽象 ==========
+  subgraph L3["L3 运行时/基础设施抽象（隔离 torchrun / Ray / HTTP）"]
+    Infra["Infra layer\npath: src/twinkle/infra/"]
+    Infra_ray["Ray helpers/resource manager\npath: src/twinkle/infra/_ray/"]
+    Client_http["Client HTTP utils\npath: src/twinkle_client/http/"]
+  end
+
+  %% ========== L4 训练编排组件层 ==========
+  subgraph L4["L4 训练编排组件层（Twinkle Modular Ecosystem）"]
+    DataFmt["Data format / protocol structs\npath: src/twinkle/data_format/"]
+    Dataset["Dataset\npath: src/twinkle/dataset/"]
+    Dataloader["DataLoader + mesh sampler\npath: src/twinkle/dataloader/"]
+
+    Model["Model (unified API)\npath: src/twinkle/model/"]
+    Model_tf["Transformers backend\npath: src/twinkle/model/transformers/"]
+    Model_mg["Megatron backend\npath: src/twinkle/model/megatron/"]
+
+    Loss["Loss\npath: src/twinkle/loss/"]
+    Metric["Metric\npath: src/twinkle/metric/"]
+    Reward["Reward\npath: src/twinkle/reward/"]
+    Advantage["Advantage (RL)\npath: src/twinkle/advantage/"]
+    Patch["Patches (compat/fixes)\npath: src/twinkle/patch/"]
+  end
+
+  %% ========== L5 运行时支撑层 ==========
+  subgraph L5["L5 运行时支撑层（Checkpoint / 并行拓扑 / Kernel）"]
+    Ckpt["CheckpointEngine (NCCL/HCCL)\npath: src/twinkle/checkpoint_engine/"]
+    Mesh["Device Mesh (topology semantics)\npath: src/twinkle/utils/device_mesh.py"]
+    Kernel["Kernel registry / layer / function\npath: src/twinkle/kernel/"]
+  end
+
+  %% ========== L6 外部依赖层 ==========
+  subgraph L6["L6 外部依赖层（计算图 / 自动微分 / 通信后端 / 框架）"]
+    Ext_torch["PyTorch: compute graph + autograd + dist/NCCL\n(external)"]
+    Ext_megatron["Megatron-Core / TE: training backend\n(external)"]
+    Ext_ray["Ray: distributed runtime / serve\n(external)"]
+    Ext_fastapi["FastAPI: HTTP API\n(external)"]
+    Ext_hub["HF/ModelScope: model/dataset hub\n(external)"]
+  end
+
+  %% ========== Dependencies ==========
+  L1_native --> L4
+  L1_client --> Client_http --> S_gateway
+  L1_http --> S_gateway
+
+  S_entry --> S_launcher --> S_gateway
+  S_launcher --> S_model_svc
+  S_launcher --> S_processor_svc
+  S_launcher --> S_sampler_svc
+
+  S_gateway --> S_common
+  S_gateway --> S_state
+  S_gateway --> S_queue
+  S_gateway --> S_lifecycle
+
+  S_model_svc --> Model
+  S_processor_svc --> DataFmt
+  S_sampler_svc --> Model
+
+  Model --> Model_tf
+  Model --> Model_mg
+
+  L4 --> Infra
+  Infra --> Infra_ray
+
+  Dataset --> Dataloader
+  Dataloader --> Mesh
+  Model --> Loss
+  Model --> Metric
+  Model --> Reward
+  Advantage --> Loss
+
+  Ckpt --> Ext_torch
+  Mesh --> Ext_torch
+  Kernel --> Ext_torch
+
+  Model_tf --> Ext_torch
+  Model_tf --> Ext_hub
+  Model_mg --> Ext_megatron
+  Model_mg --> Ext_torch
+
+  Infra_ray --> Ext_ray
+  S_gateway --> Ext_fastapi
+
+
 ## 社区组件
 
 | 组件类型 | 组件链接                                                                                           | 组件功能                                                                      | 作者              |
